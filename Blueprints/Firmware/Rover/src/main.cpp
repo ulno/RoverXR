@@ -15,7 +15,6 @@
 #include <M5StickC.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-// #include "M5_RoverC.h"
 
 #ifdef USE_AP
   const char *ssid = "M5AP";
@@ -25,7 +24,7 @@
   const char *password = CONNECT_PW;
 #endif  
 
-TFT_eSprite Disbuff = TFT_eSprite(&M5.Lcd);
+//TFT_eSprite Disbuff = TFT_eSprite(&M5.Lcd);
 WiFiServer server(80);
 
 WiFiUDP Udp1;
@@ -41,34 +40,59 @@ void SetChargingCurrent(uint8_t CurrentLevel) {
 void setup() {
   M5.begin();
   M5.update();
+  // Turn off screen
+  M5.Axp.SetLDO2(false);
+  M5.Axp.SetLDO3(false);
   // roverc.begin();
   Wire.begin(0, 26, 100000UL);
 
   uint64_t chipid = ESP.getEfuseMac();
   String str = ssid + String((uint32_t)(chipid >> 32), HEX);
-  M5.Lcd.setRotation(1);
-  M5.Lcd.setSwapBytes(false);
-  Disbuff.createSprite(160, 80);
-  Disbuff.setSwapBytes(true);
-  Disbuff.fillRect(0, 0, 160, 20, Disbuff.color565(50, 50, 50));
-  Disbuff.setTextSize(2);
-  Disbuff.setTextColor(WHITE);
-  Disbuff.setCursor(15, 35);
-  Disbuff.print(str);
-  Disbuff.pushSprite(0, 0);
+  
+  // M5.Lcd.setRotation(1);
+  // M5.Lcd.setSwapBytes(false);
+  // Disbuff.createSprite(160, 80);
+  // Disbuff.setSwapBytes(true);
+  // Disbuff.fillRect(0, 0, 160, 20, Disbuff.color565(50, 50, 50));
+  // Disbuff.setTextSize(2);
+  // Disbuff.setTextColor(WHITE);
+  // Disbuff.setCursor(15, 35);
+  // Disbuff.print(str);
+  // Disbuff.pushSprite(0, 0);
 
   SetChargingCurrent(4);
 
   Serial.begin(115200);
-  // Set device in STA mode to begin with
-  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
-                    IPAddress(255, 255, 255, 0));
-
-  WiFi.softAP(str.c_str(), password);
-  IPAddress myIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(myIP);
-  server.begin();
+  delay(200);
+  Serial.println();
+  Serial.println("Serial initialized.");
+  #ifdef USE_AP
+    // Set device in STA mode to begin with
+    WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
+                      IPAddress(255, 255, 255, 0));
+    WiFi.softAP(str.c_str(), password);
+    IPAddress myIP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(myIP);
+    server.begin();
+  #else
+    WiFi.begin(CONNECT_SSID, CONNECT_PW);
+    #define SYSNUM_STRING(x) #x
+    #define HOSTNAME "m5-remote-" SYSNUM_STRING(SYSNUM)
+    WiFi.setHostname(HOSTNAME);
+    for(int i=0; i<40; i++) {
+      if(WiFi.isConnected()) {
+        Serial.println();
+        Serial.print(F("Connected to Wi-Fi with IP: "));
+        Serial.println(WiFi.localIP());
+        break;
+      }
+      else {
+        Serial.print(".");
+        delay(500);
+      }
+    }
+  #endif
 
   Udp1.begin(1003);
 }
@@ -94,7 +118,7 @@ uint8_t I2CWritebuff(uint8_t Addr, uint8_t *Data, uint16_t Length) {
 int16_t speed_buff[4] = { 0 };
 int8_t speed_sendbuff[4] = { 0 };
 uint32_t count = 0;
-uint8_t IIC_ReState = ESP_ERR_NO_MEM;
+uint8_t IIC_ReState = ESP_OK;
 
 uint8_t Setspeed(int16_t Vtx, int16_t Vty, int16_t Wt) {
   Wt = (Wt > 100) ? 100 : Wt;
@@ -128,6 +152,7 @@ void setServoAngle(uint8_t pos, uint8_t angle) {
 }
 
 void loop() {
+  yield();
   int udplength = Udp1.parsePacket();
   if (udplength) {
     char udpdata[udplength];
@@ -165,12 +190,12 @@ void loop() {
   if (count > 100) {
     count = 0;
 
-    Disbuff.fillRect(0, 0, 160, 20, Disbuff.color565(50, 50, 50));
-    Disbuff.setTextSize(1);
-    Disbuff.setTextColor(WHITE);
-    Disbuff.setCursor(5, 5);
-    Disbuff.printf("%.2fV,%.2fmA,%d", M5.Axp.GetBatVoltage(),
-                   M5.Axp.GetBatCurrent(), IIC_ReState);
-    Disbuff.pushSprite(0, 0);
+    // Disbuff.fillRect(0, 0, 160, 20, Disbuff.color565(50, 50, 50));
+    // Disbuff.setTextSize(1);
+    // Disbuff.setTextColor(WHITE);
+    // Disbuff.setCursor(5, 5);
+    // Disbuff.printf("%.2fV,%.2fmA,%d", M5.Axp.GetBatVoltage(),
+    //                M5.Axp.GetBatCurrent(), IIC_ReState);
+    // Disbuff.pushSprite(0, 0);
   }
 }
