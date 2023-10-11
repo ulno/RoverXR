@@ -9,6 +9,7 @@
    steering.
 */
 
+#include <Arduino.h>
 #include <M5StickC.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
