@@ -14,6 +14,7 @@
 #include <Arduino.h>
 #include <M5StickC.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <WiFiUdp.h>
 
 #ifdef USE_AP
@@ -22,6 +23,11 @@
 #else
   const char *ssid = CONNECT_SSID;
   const char *password = CONNECT_PW;
+  #define SYSNUM_STRINGIFY2(x) #x
+  #define SYSNUM_STRINGIFY(x) SYSNUM_STRINGIFY2(x)
+  #define SYSNUM_CONCAT(a, b) a b
+  #define REMOTENAME SYSNUM_CONCAT("m5-remote-", SYSNUM_STRINGIFY(SYSNUM))
+  #define ROVERNAME SYSNUM_CONCAT("m5-rover-", SYSNUM_STRINGIFY(SYSNUM))
 #endif  
 
 //TFT_eSprite Disbuff = TFT_eSprite(&M5.Lcd);
@@ -74,12 +80,15 @@ void setup() {
     IPAddress myIP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(myIP);
-    server.begin();
   #else
+    Serial.print("Hostname: ");
+    const char* hostname = ROVERNAME;
+    Serial.println(hostname);
+    WiFi.setHostname(hostname);
     WiFi.begin(CONNECT_SSID, CONNECT_PW);
-    #define SYSNUM_STRING(x) #x
-    #define HOSTNAME "m5-remote-" SYSNUM_STRING(SYSNUM)
-    WiFi.setHostname(HOSTNAME);
+    Serial.println(F("Starting MDNS."));
+    MDNS.begin(hostname);
+    Serial.println(F("MDNS Ready."));
     for(int i=0; i<40; i++) {
       if(WiFi.isConnected()) {
         Serial.println();
@@ -94,7 +103,8 @@ void setup() {
     }
   #endif
 
-  Udp1.begin(1003);
+  server.begin();
+  Udp1.begin(1000 + SYSNUM);
 }
 
 uint8_t SendBuff[9] = { 0xAA, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xee };
@@ -152,7 +162,7 @@ void setServoAngle(uint8_t pos, uint8_t angle) {
 }
 
 void loop() {
-  yield();
+  static bool wifi_connected = false;
   int udplength = Udp1.parsePacket();
   if (udplength) {
     char udpdata[udplength];
@@ -186,6 +196,18 @@ void loop() {
       IIC_ReState = Setspeed(0, 0, 0);
     }
   }
+  if(WiFi.status() != WL_CONNECTED) { /// No WiFi connection
+    if(wifi_connected) {
+      Serial.println("Wifi disconnected.");
+      wifi_connected = false;
+    }
+  } else { // WiFi connection exists
+    if(!wifi_connected) {
+      Serial.println("Wifi connected.");
+      wifi_connected = true;
+    }
+  }
+ 
   count++;
   if (count > 100) {
     count = 0;

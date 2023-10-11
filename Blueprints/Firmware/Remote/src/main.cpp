@@ -9,9 +9,18 @@
    steering.
 */
 
+#include "config.h"
+#ifndef CONNECT_SSID
+  #define USE_AP // run your own accesspoint?
+#endif
+#ifndef SYSNUM
+  #define SYSNUM 3 // which system are we on?
+#endif
+
 #include <Arduino.h>
 #include <M5StickC.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
 
@@ -21,20 +30,29 @@ TFT_eSprite Disbuff = TFT_eSprite(&M5.Lcd);
 extern const unsigned char connect_on[800];
 extern const unsigned char connect_off[800];
 
-#define SYSNUM 3
-
 uint64_t realTime[4], time_count = 0;
 bool k_ready = false;
 uint32_t key_count = 0;
 
-IPAddress local_IP(192, 168, 4, 100 + SYSNUM);
-IPAddress gateway(192, 168, 4, 1);
-IPAddress subnet(255, 255, 0, 0);
-IPAddress primaryDNS(8, 8, 8, 8);    // optional
-IPAddress secondaryDNS(8, 8, 4, 4);  // optional
+#ifdef USE_AP
+  IPAddress local_IP(192, 168, 4, 100 + SYSNUM);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 0, 0);
+  IPAddress primaryDNS(8, 8, 8, 8);    // optional
+  IPAddress secondaryDNS(8, 8, 4, 4);  // optional
 
-const char *ssid = "M5AP";
-const char *password = "77777777";
+  const char *ssid = "M5AP";
+  const char *password = "77777777";
+#else
+  const char *ssid = CONNECT_SSID;
+  const char *password = CONNECT_PW;
+  #define SYSNUM_STRINGIFY2(x) #x
+  #define SYSNUM_STRINGIFY(x) SYSNUM_STRINGIFY2(x)
+  #define SYSNUM_CONCAT(a, b) a b
+  #define REMOTENAME SYSNUM_CONCAT("m5-remote-", SYSNUM_STRINGIFY(SYSNUM))
+  #define ROVERNAME SYSNUM_CONCAT("m5-rover-", SYSNUM_STRINGIFY(SYSNUM))
+#endif
+
 
 WiFiUDP Udp;
 uint32_t send_count = 0;
@@ -84,10 +102,16 @@ uint8_t SendBuff[8] = { 0xAA, 0x55, SYSNUM, 0x00, 0x00, 0x00, 0x00, 0xee };
 
 void SendUDP() {
   if (WiFi.status() == WL_CONNECTED) {
-    Udp.beginPacket(IPAddress(192, 168, 4, 1), 1000 + SYSNUM);
+    #ifdef USE_AP
+      Udp.beginPacket(IPAddress(192, 168, 4, 1), 1000 + SYSNUM);
+    #else
+      //Udp.beginPacket(IPAddress(192, 168, 18, 226), 1000 + SYSNUM);
+      Udp.beginPacket(ROVERNAME, 1000 + SYSNUM);
+    #endif
     Udp.write(SendBuff, 8);
     Udp.endPacket();
   }
+
 }
 
 char APName[20];
@@ -133,91 +157,107 @@ void setup() {
     }
     */
   M5.update();
-  if ((EEPROM.read(0) != 0x56) || (M5.BtnA.read() == 1)) {
-    WiFi.mode(WIFI_STA);
-    int n = WiFi.scanNetworks();
-    Disbuff.setTextSize(1);
-    Disbuff.setTextColor(GREEN);
-    Disbuff.fillRect(0, 0, 80, 20, Disbuff.color565(50, 50, 50));
+  #ifdef USE_AP
+    if ((EEPROM.read(0) != 0x56) || (M5.BtnA.read() == 1)) {
+      WiFi.mode(WIFI_STA);
+      int n = WiFi.scanNetworks();
+      Disbuff.setTextSize(1);
+      Disbuff.setTextColor(GREEN);
+      Disbuff.fillRect(0, 0, 80, 20, Disbuff.color565(50, 50, 50));
 
-    if (n == 0) {
-      Disbuff.setCursor(5, 20);
-      Disbuff.printf("no networks");
+      if (n == 0) {
+        Disbuff.setCursor(5, 20);
+        Disbuff.printf("no networks");
 
-    } else {
-      int count = 0;
-      for (int i = 0; i < n; ++i) {
-        if (WiFi.SSID(i).indexOf("M5AP") != -1) {
-          if (count == 0) {
-            Disbuff.setTextColor(GREEN);
-          } else {
-            Disbuff.setTextColor(WHITE);
-          }
-          Disbuff.setCursor(5, 25 + count * 10);
-          String str = WiFi.SSID(i);
-          Disbuff.printf(str.c_str());
-          WfifAPBuff[count] = WiFi.SSID(i);
-          count++;
-        }
-      }
-      Disbuff.pushSprite(0, 0);
-      while (1) {
-        if (M5.BtnA.read() == 1) {
-          if (count_bn_a >= 200) {
-            count_bn_a = 201;
-            EEPROM.writeUChar(0, 0x56);
-            EEPROM.writeString(1, WfifAPBuff[choose]);
-            ssidname = WfifAPBuff[choose];
-            break;
-          }
-          count_bn_a++;
-          Serial.printf("count_bn_a %d \n", count_bn_a);
-        } else if ((M5.BtnA.isReleased()) && (count_bn_a != 0)) {
-          Serial.printf("count_bn_a %d", count_bn_a);
-          if (count_bn_a > 200) {
-          } else {
-            choose++;
-            if (choose >= count) {
-              choose = 0;
+      } else {
+        int count = 0;
+        for (int i = 0; i < n; ++i) {
+          if (WiFi.SSID(i).indexOf("M5AP") != -1) {
+            if (count == 0) {
+              Disbuff.setTextColor(GREEN);
+            } else {
+              Disbuff.setTextColor(WHITE);
             }
-            Disbuff.fillRect(0, 0, 80, 20, Disbuff.color565(50, 50, 50));
-            for (int i = 0; i < count; i++) {
-              Disbuff.setCursor(5, 25 + i * 10);
-              if (choose == i) {
-                Disbuff.setTextColor(GREEN);
-              } else {
-                Disbuff.setTextColor(WHITE);
+            Disbuff.setCursor(5, 25 + count * 10);
+            String str = WiFi.SSID(i);
+            Disbuff.printf(str.c_str());
+            WfifAPBuff[count] = WiFi.SSID(i);
+            count++;
+          }
+        }
+        Disbuff.pushSprite(0, 0);
+
+        while (1) {
+          if (M5.BtnA.read() == 1) {
+            if (count_bn_a >= 200) {
+              count_bn_a = 201;
+              EEPROM.writeUChar(0, 0x56);
+              EEPROM.writeString(1, WfifAPBuff[choose]);
+              ssidname = WfifAPBuff[choose];
+              break;
+            }
+            count_bn_a++;
+            Serial.printf("count_bn_a %d \n", count_bn_a);
+          } else if ((M5.BtnA.isReleased()) && (count_bn_a != 0)) {
+            Serial.printf("count_bn_a %d", count_bn_a);
+            if (count_bn_a > 200) {
+            } else {
+              choose++;
+              if (choose >= count) {
+                choose = 0;
               }
-              Disbuff.printf(WfifAPBuff[i].c_str());
+              Disbuff.fillRect(0, 0, 80, 20, Disbuff.color565(50, 50, 50));
+              for (int i = 0; i < count; i++) {
+                Disbuff.setCursor(5, 25 + i * 10);
+                if (choose == i) {
+                  Disbuff.setTextColor(GREEN);
+                } else {
+                  Disbuff.setTextColor(WHITE);
+                }
+                Disbuff.printf(WfifAPBuff[i].c_str());
+              }
+              Disbuff.pushSprite(0, 0);
             }
-            Disbuff.pushSprite(0, 0);
+            count_bn_a = 0;
           }
-          count_bn_a = 0;
+          delay(10);
+          M5.update();
         }
-        delay(10);
-        M5.update();
-      }
       // EEPROM.writeString(1,WfifAPBuff[0]);
+      }
+    } else if (EEPROM.read(0) == 0x56) {
+      ssidname = EEPROM.readString(1);
+      EEPROM.readString(1, APName, 16);
     }
-  } else if (EEPROM.read(0) == 0x56) {
-    ssidname = EEPROM.readString(1);
-    EEPROM.readString(1, APName, 16);
-  }
+  #endif
 
   Disbuff.fillRect(0, 20, 80, 140, BLACK);
+  #ifdef USE_AP
+    if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+      Serial.println("STA Failed to configure");
+    }
 
-  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
-    Serial.println("STA Failed to configure");
-  }
-
-  WiFi.begin(ssidname.c_str(), password);
+    WiFi.begin(ssidname.c_str(), password);
+  #else
+    const char* hostname = REMOTENAME;
+    Serial.println(hostname);
+    WiFi.setHostname(hostname);
+    WiFi.begin(CONNECT_SSID, CONNECT_PW);
+    Serial.println(F("Starting MDNS."));
+    MDNS.begin(hostname);
+    Serial.println(F("MDNS Ready."));
+  #endif
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
 
-  Udp.begin(2000);
+  Serial.println();
+  Serial.print(F("Connected to Wi-Fi with IP: "));
+  Serial.println(WiFi.localIP());
+
+  Udp.begin(2000 + SYSNUM);
 
   Disbuff.pushImage(0, 0, 20, 20, (uint16_t *)connect_on);
   Disbuff.pushSprite(0, 0);
@@ -240,7 +280,9 @@ void loop() {
     Disbuff.pushSprite(0, 0);
     count++;
     if (count > 500) {
-      WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
+      #ifdef USE_AP
+        WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
+      #endif
       count = 0;
     }
   } else {
@@ -253,9 +295,9 @@ void loop() {
     } else {
       SendBuff[6] = 0x00;
     }
-    Serial.print(SendBuff[0], HEX); Serial.print("\t"); Serial.print(SendBuff[1], HEX); Serial.print("\t"); Serial.print(SendBuff[2], HEX); Serial.print("\t");
-    Serial.print(SendBuff[3], HEX); Serial.print("\t"); Serial.print(SendBuff[4], HEX); Serial.print("\t"); Serial.print(SendBuff[5], HEX); Serial.print("\t");
-    Serial.print(SendBuff[6], HEX); Serial.print("\t"); Serial.println(SendBuff[7], HEX);
+    Serial.print(SendBuff[0], HEX); Serial.print(" "); Serial.print(SendBuff[1], HEX); Serial.print(" "); Serial.print(SendBuff[2], HEX); Serial.print(" ");
+    Serial.print(SendBuff[3], HEX); Serial.print(" "); Serial.print(SendBuff[4], HEX); Serial.print(" "); Serial.print(SendBuff[5], HEX); Serial.print(" ");
+    Serial.print(SendBuff[6], HEX); Serial.print(" "); Serial.println(SendBuff[7], HEX);
     SendUDP();
   }
   
