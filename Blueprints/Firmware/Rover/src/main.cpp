@@ -3,14 +3,27 @@
    after booting up, waiting for JoyC to pair.
 */
 
+#include "config.h"
+#ifndef CONNECT_SSID
+  #define USE_AP // run your own accesspoint?
+#endif
+#ifndef SYSNUM
+  #define SYSNUM 3 // which system are we on?
+#endif
+
 #include <Arduino.h>
 #include <M5StickC.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 // #include "M5_RoverC.h"
 
-const char *ssid = "M5AP";
-const char *password = "77777777";
+#ifdef USE_AP
+  const char *ssid = "M5AP";
+  const char *password = "77777777";
+#else
+  const char *ssid = CONNECT_SSID;
+  const char *password = CONNECT_PW;
+#endif  
 
 TFT_eSprite Disbuff = TFT_eSprite(&M5.Lcd);
 WiFiServer server(80);
