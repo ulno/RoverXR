@@ -5,10 +5,15 @@ var frame = Image.new()
 var meas_fps_start = Time.get_ticks_msec()
 var fps_counter : int = 0
 var time_elapsed : float = 0
+var loading_thread = Thread.new()
+var mutex_decoding_process = Mutex.new()
+var semaphore_data_ready = Semaphore.new()
+var image_data: PackedByteArray
 
 func _ready():
 	socket.set_inbound_buffer_size(WS_CONF.INBOUND_BUFFER_SIZE)
 	_handle_connect()
+	loading_thread.start(_load_image)
 
 func _process(_delta):
 	socket.poll()
@@ -42,13 +47,31 @@ func _handle_connect() -> void:
 		print_to_debug("Failed to connect to %s" % [WS_CONF.WS_URI])
 
 func _handle_stream(data: PackedByteArray) -> void:
-	#var frame = Image.new()
-	var error = frame.load_jpg_from_buffer(data)
-	if error == OK:
-		$Margin/Stream.texture = ImageTexture.create_from_image(frame)
-		calc_FPS()
-	else:
-		print_to_debug("Failed to load received image, error code %s" % [error])
+	if mutex_decoding_process.try_lock():  # Check if decoding is finished
+		#loading_thread.call("_load_image", data)
+		# copy data
+		image_data = data.duplicate() # this might take time
+		semaphore_data_ready.post() # signal that data is ready
+		mutex_decoding_process.unlock()  # allow access to data
+	#else:
+		## If mutex is locked, skip the frame
+		#print_to_debug("Skipped a frame as still processing the previous one")
+
+func _load_image() -> void:
+	while (true):
+		semaphore_data_ready.wait()  # wait until some data is ready
+		mutex_decoding_process.lock() # get access to data
+		#var frame = Image.new()
+		var error = frame.load_jpg_from_buffer(image_data)
+		mutex_decoding_process.unlock() # signal that encoding is ready
+		if error == OK:
+			_update_texture.call_deferred() # needs to be updated later - in ui thread?
+			calc_FPS()
+		#else: # TODO: consider counting errors here
+			#print_to_debug("Failed to load received image, error code %s" % [error])
+
+func _update_texture() -> void:
+	$Margin/Stream.texture = ImageTexture.create_from_image(frame)
 
 func calc_FPS() -> void:	
 	fps_counter += 1

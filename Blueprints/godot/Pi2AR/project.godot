@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Pi2AR"
 run/main_scene="res://src/Main.tscn"
-config/features=PackedStringArray("4.0", "Mobile")
+config/features=PackedStringArray("4.2", "Mobile")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -22,7 +22,7 @@ WS_CONF="*res://src/ws_config.gd"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot-xr-tools/plugin.cfg")
+enabled=PackedStringArray("res://addons/godot-xr-tools/plugin.cfg", "res://addons/godotopenxr/plugin.cfg")
 
 [layer_names]
 
