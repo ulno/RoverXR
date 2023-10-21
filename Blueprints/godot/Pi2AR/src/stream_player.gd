@@ -10,6 +10,7 @@ var mutex_decoding_process = Mutex.new()
 var semaphore_data_ready = Semaphore.new()
 var image_data: PackedByteArray
 
+
 func _ready():
 	socket.set_inbound_buffer_size(WS_CONF.INBOUND_BUFFER_SIZE)
 	_handle_connect()
@@ -50,7 +51,8 @@ func _handle_stream(data: PackedByteArray) -> void:
 	if mutex_decoding_process.try_lock():  # Check if decoding is finished
 		#loading_thread.call("_load_image", data)
 		# copy data
-		image_data = data.duplicate() # this might take time
+		#image_data = data.duplicate() # this might take time
+		image_data = data # should just be reference copying
 		semaphore_data_ready.post() # signal that data is ready
 		mutex_decoding_process.unlock()  # allow access to data
 	#else:
